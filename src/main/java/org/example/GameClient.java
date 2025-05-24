@@ -11,20 +11,22 @@ import java.awt.event.KeyEvent;
 import java.net.URI;
 
 public class GameClient extends JPanel implements Runnable {
-    private static final String SERVER_URI = "ws://localhost:8887";
 
-    private Player localPlayer;
-    private Player remotePlayer;
-    private GameWebSocketClient webSocketClient;
-    private static final Gson gson = new Gson();
+    private WebSocketClient socket;
+    private final Player localPlayer;
+    private final Player remotePlayer;
+    private final Gson gson = new Gson();
 
-    public GameClient() {
+
+
+    public GameClient(String serverIP) {
         setPreferredSize(new Dimension(900, 900));
         setBackground(Color.WHITE);
 
         localPlayer = new Player(450, 450, 5);
         remotePlayer = new Player(300, 300, 5);
 
+        setFocusable(true);
         addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
@@ -37,50 +39,64 @@ public class GameClient extends JPanel implements Runnable {
             }
         });
 
-        setFocusable(true);
-        connectToServer();
+        connectToServer(serverIP);
         new Thread(this).start();
     }
 
-    private void connectToServer() {
-        try {
-            webSocketClient = new GameWebSocketClient(new URI(SERVER_URI), this);
-            webSocketClient.connect();
-        } catch (Exception e) {
-            System.out.println("Nie można połączyć z serwerem WebSocket.");
-        }
-    }
-
-    public void updateRemotePlayer(Player p) {
-        this.remotePlayer = p;
-    }
-
-    public String serializePlayer(Player p) {
-        return gson.toJson(p);
-    }
-
     public Player deserializePlayer(String json) {
+        Gson gson = new Gson();
         return gson.fromJson(json, Player.class);
+    }
+
+    public void updateRemotePlayer(Player player) {
+        remotePlayer.setX(player.getX());
+        remotePlayer.setY(player.getY());
+    }
+
+    private void connectToServer(String serverIP) {
+        try {
+            socket = new WebSocketClient(new URI("ws://" + serverIP + ":8887")) {
+                @Override
+                public void onOpen(ServerHandshake handshake) {
+                    System.out.println("Połączono z serwerem.");
+                }
+
+                @Override
+                public void onMessage(String message) {
+                    Player data = gson.fromJson(message, Player.class);
+                    remotePlayer.setX(data.getX());
+                    remotePlayer.setY(data.getY());
+                }
+
+                @Override
+                public void onClose(int code, String reason, boolean remote) {
+                    System.out.println("Rozłączono z serwerem.");
+                }
+
+                @Override
+                public void onError(Exception ex) {
+                    System.out.println("Błąd klienta: " + ex.getMessage());
+                }
+            };
+            socket.connect();
+        } catch (Exception e) {
+            System.out.println("Nie udało się połączyć: " + e.getMessage());
+        }
     }
 
     @Override
     public void run() {
         while (true) {
             localPlayer.move(getWidth(), getHeight());
-            sendPlayerData();
+
+            if (socket != null && socket.isOpen()) {
+                socket.send(gson.toJson(localPlayer));
+            }
+
             repaint();
             try {
-                Thread.sleep(16);
-            } catch (InterruptedException e) {
-                // Ignoruj
-            }
-        }
-    }
-
-    private void sendPlayerData() {
-        if (webSocketClient != null && webSocketClient.isOpen()) {
-            String json = serializePlayer(localPlayer);
-            webSocketClient.send(json);
+                Thread.sleep(16); // ~60 FPS
+            } catch (InterruptedException ignored) {}
         }
     }
 
@@ -94,8 +110,9 @@ public class GameClient extends JPanel implements Runnable {
     }
 
     public static void main(String[] args) {
-        JFrame frame = new JFrame("WebSocket LAN Game");
-        GameClient game = new GameClient();
+        String ip = JOptionPane.showInputDialog("Podaj IP serwera (np. 192.168.0.101):");
+        JFrame frame = new JFrame("WebSocket Multiplayer");
+        GameClient game = new GameClient(ip);
         frame.add(game);
         frame.pack();
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
