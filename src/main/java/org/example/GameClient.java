@@ -12,10 +12,15 @@ import java.net.URI;
 
 public class GameClient extends JPanel implements Runnable {
 
+    private int remoteTargetX;
+    private int remoteTargetY;
     private WebSocketClient socket;
     private final Player localPlayer;
     private final Player remotePlayer;
     private final Gson gson = new Gson();
+
+    private final java.util.List<Enemy> enemies = new java.util.ArrayList<>();
+    private final java.util.Random random = new java.util.Random();
 
 
 
@@ -32,6 +37,7 @@ public class GameClient extends JPanel implements Runnable {
             public void keyPressed(KeyEvent e) {
                 localPlayer.handleKeyPress(e.getKeyCode(), true);
             }
+
 
             @Override
             public void keyReleased(KeyEvent e) {
@@ -53,6 +59,7 @@ public class GameClient extends JPanel implements Runnable {
         remotePlayer.setY(player.getY());
     }
 
+
     private void connectToServer(String serverIP) {
         try {
             socket = new WebSocketClient(new URI("ws://" + serverIP + ":8887")) {
@@ -63,9 +70,27 @@ public class GameClient extends JPanel implements Runnable {
 
                 @Override
                 public void onMessage(String message) {
-                    Player data = gson.fromJson(message, Player.class);
-                    remotePlayer.setX(data.getX());
-                    remotePlayer.setY(data.getY());
+                    try {
+                        var jsonObject = gson.fromJson(message, com.google.gson.JsonObject.class);
+
+                        if (jsonObject.has("type") && jsonObject.get("type").getAsString().equals("enemyUpdate")) {
+                            Enemy[] enemyArray = gson.fromJson(jsonObject.get("enemies"), Enemy[].class);
+
+                            synchronized (enemies) {
+                                enemies.clear();
+                                for (Enemy e : enemyArray) {
+                                    enemies.add(e);
+                                }
+                            }
+                        } else {
+                            Player data = gson.fromJson(message, Player.class);
+                            remoteTargetX = data.getX();
+                            remoteTargetY = data.getY();
+                        }
+
+                    } catch (Exception e) {
+                        System.out.println("Błąd przy parsowaniu wiadomości: " + e.getMessage());
+                    }
                 }
 
                 @Override
@@ -92,6 +117,19 @@ public class GameClient extends JPanel implements Runnable {
             if (socket != null && socket.isOpen()) {
                 socket.send(gson.toJson(localPlayer));
             }
+            java.util.List<Movable> players = new java.util.ArrayList<>();
+            players.add(localPlayer);
+            // Interpolacja pozycji remotePlayer
+            int dx = remoteTargetX - remotePlayer.getX();
+            int dy = remoteTargetY - remotePlayer.getY();
+
+// Przesuwaj o mały krok, np. 10% odległości
+            remotePlayer.setX(remotePlayer.getX() + dx / 5);
+            remotePlayer.setY(remotePlayer.getY() + dy / 5);
+
+            for (Enemy enemy : enemies) {
+                enemy.moveTowardsClosest(players);
+            }
 
             repaint();
             try {
@@ -107,7 +145,15 @@ public class GameClient extends JPanel implements Runnable {
         localPlayer.draw(g);
         g.setColor(Color.GREEN);
         remotePlayer.draw(g);
+
+        g.setColor(Color.RED);
+        synchronized (enemies) {
+            for (Enemy enemy : enemies) {
+                enemy.draw(g);
+            }
+        }
     }
+
 
     public static void main(String[] args) {
         String ip = JOptionPane.showInputDialog("Podaj IP serwera (np. 192.168.0.101):");

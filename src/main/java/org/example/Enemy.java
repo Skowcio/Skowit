@@ -2,11 +2,14 @@ package org.example;
 
 import java.awt.*;
 import java.util.List;
-import java.util.ArrayList;
-
 
 public class Enemy {
-    private int x, y, speed;
+    public int x, y;
+    public int speed;
+
+    public Enemy() {
+        // domyślny konstruktor potrzebny do deserializacji JSON
+    }
 
     public Enemy(int x, int y, int speed) {
         this.x = x;
@@ -16,6 +19,9 @@ public class Enemy {
 
     public int getX() { return x; }
     public int getY() { return y; }
+
+    public void setX(int x) { this.x = x; }
+    public void setY(int y) { this.y = y; }
 
     public void moveTowardsClosest(List<Movable> players) {
         Movable closest = null;
