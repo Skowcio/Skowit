@@ -1,14 +1,23 @@
 package org.example;
 
-import java.awt.event.KeyEvent;
 import java.awt.*;
+import java.awt.event.KeyEvent;
 import java.io.Serializable;
 
 public class Player implements Movable, Serializable {
     private int x, y, speed;
     private boolean up, down, left, right;
-
     private int targetX, targetY;
+
+    // PUSTY KONSTRUKTOR do deserializacji JSON (Gson)
+    public Player() {
+    }
+
+    public Player(int x, int y, int speed) {
+        this.x = x;
+        this.y = y;
+        this.speed = speed;
+    }
 
     public void setTarget(int x, int y) {
         this.targetX = x;
@@ -21,12 +30,6 @@ public class Player implements Movable, Serializable {
 
     public int getTargetY() {
         return targetY;
-    }
-
-    public Player(int x, int y, int speed) {
-        this.x = x;
-        this.y = y;
-        this.speed = speed;
     }
 
     public void move(int width, int height) {
