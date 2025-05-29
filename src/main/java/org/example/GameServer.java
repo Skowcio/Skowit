@@ -16,6 +16,7 @@ public class GameServer extends WebSocketServer {
     private final Random random = new Random();
     private final ProjectileManager projectileManager = new ProjectileManager(); // [DODANE]
     private static final int MAX_ENEMIES = 100;
+    List<WebSocket> playersToRemove = new ArrayList<>();
 
     public GameServer(int port) {
         super(new InetSocketAddress("0.0.0.0", port));
@@ -114,6 +115,24 @@ public class GameServer extends WebSocketServer {
                         enemy.x = Math.max(0, Math.min(880, enemy.x));
                         enemy.y = Math.max(0, Math.min(880, enemy.y));
                     }
+
+                    // [NOWE] Sprawdź kolizje z każdym graczem
+                    synchronized (players) {
+                        for (Map.Entry<WebSocket, Player> entry : players.entrySet()) {
+                            Player p = entry.getValue();
+                            double dx = p.getX() - enemy.x;
+                            double dy = p.getY() - enemy.y;
+                            double dist = Math.sqrt(dx * dx + dy * dy);
+                            if (dist < 20) { // dystans kontaktu
+                                playersToRemove.add(entry.getKey());
+                            }
+                        }
+                    }
+                }
+                for (WebSocket conn : playersToRemove) {
+                    players.remove(conn);
+                    conn.close(); // rozłącz klienta opcjonalnie
+                    System.out.println("Gracz usunięty po kontakcie z wrogiem: " + conn.getRemoteSocketAddress());
                 }
 
                 // [DODANE] AKTUALIZACJA POCISKÓW
