@@ -15,11 +15,14 @@ public class GameServer extends WebSocketServer {
     private final List<Enemy> enemies = new ArrayList<>();
     private final Random random = new Random();
     private final ProjectileManager projectileManager = new ProjectileManager(); // [DODANE]
+    private static final int MAX_ENEMIES = 100;
 
     public GameServer(int port) {
         super(new InetSocketAddress("0.0.0.0", port));
         spawnEnemies(5);
         startEnemyUpdateLoop();
+        startEnemyRespawnLoop(); // <-- dodane
+
     }
 
     private void spawnEnemies(int count) {
@@ -30,6 +33,53 @@ public class GameServer extends WebSocketServer {
             enemies.add(new Enemy(x, y, 2));
         }
     }
+
+    private void startEnemyRespawnLoop() {
+        new Thread(() -> {
+            while (true) {
+                try {
+                    Thread.sleep(10000); // 10 sekund
+                } catch (InterruptedException ignored) {}
+
+                synchronized (enemies) {
+                    int toSpawn = MAX_ENEMIES - enemies.size();
+                    if (toSpawn > 0) {
+                        int spawnCount = Math.min(10, toSpawn);
+                        int spawned = 0;
+
+                        List<Player> playerList;
+                        synchronized (players) {
+                            playerList = new ArrayList<>(players.values());
+                        }
+
+                        while (spawned < spawnCount) {
+                            double x = random.nextInt(880);
+                            double y = random.nextInt(880);
+
+                            boolean tooClose = false;
+                            for (Player p : playerList) {
+                                double dx = p.getX() - x;
+                                double dy = p.getY() - y;
+                                double dist = Math.sqrt(dx * dx + dy * dy);
+                                if (dist < 100) {
+                                    tooClose = true;
+                                    break;
+                                }
+                            }
+
+                            if (!tooClose) {
+                                enemies.add(new Enemy(x, y, 2));
+                                spawned++;
+                            }
+                        }
+
+                        System.out.println("Dodano " + spawned + " nowych przeciwników (poza graczami). Łącznie: " + enemies.size());
+                    }
+                }
+            }
+        }).start();
+    }
+
 
     private void startEnemyUpdateLoop() {
         new Thread(() -> {
@@ -195,7 +245,8 @@ public class GameServer extends WebSocketServer {
 
     // [DODANE] Packet przyjmujący dane od klienta do strzelania
     static class ShootPacket {
-        String type;
+        String type = "shoot";
+        double sourceX, sourceY;
         double targetX, targetY;
     }
 

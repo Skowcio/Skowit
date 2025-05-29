@@ -44,14 +44,15 @@ public class GameClient extends JPanel implements Runnable {
                 localPlayer.handleKeyPress(e.getKeyCode(), true);
 
                 if (e.getKeyCode() == KeyEvent.VK_SPACE) {
-                    ProjectileShootPacket shootPacket = new ProjectileShootPacket();
-                    shootPacket.sourceX = localPlayer.getX();
-                    shootPacket.sourceY = localPlayer.getY();
+                    ShootPacket shootPacket = new ShootPacket();
 
-                    // Obliczamy kąt do pozycji myszy
-                    double dx = mouseX - localPlayer.getX();
-                    double dy = mouseY - localPlayer.getY();
-                    shootPacket.angle = Math.atan2(dy, dx);
+                    int playerCenterX = localPlayer.getX() + 10;
+                    int playerCenterY = localPlayer.getY() + 10;
+
+                    shootPacket.sourceX = playerCenterX;
+                    shootPacket.sourceY = playerCenterY;
+                    shootPacket.targetX = mouseX;
+                    shootPacket.targetY = mouseY;
 
                     if (socket != null && socket.isOpen()) {
                         socket.send(gson.toJson(shootPacket));
@@ -241,6 +242,11 @@ public class GameClient extends JPanel implements Runnable {
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
+    }
+    static class ShootPacket {
+        String type = "shoot";
+        double sourceX, sourceY;
+        double targetX, targetY;
     }
 
     private static class PlayerPacket {
