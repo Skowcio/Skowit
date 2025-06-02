@@ -17,6 +17,7 @@ public class Player implements Movable, Serializable {
         this.x = x;
         this.y = y;
         this.speed = speed;
+
     }
 
     public void setTarget(int x, int y) {

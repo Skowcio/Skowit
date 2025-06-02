@@ -6,6 +6,7 @@ import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 import java.net.InetSocketAddress;
 import java.util.*;
+import org.example.Enemy;
 
 public class GameServer extends WebSocketServer {
 
@@ -15,8 +16,9 @@ public class GameServer extends WebSocketServer {
     private final List<Enemy> enemies = new ArrayList<>();
     private final Random random = new Random();
     private final ProjectileManager projectileManager = new ProjectileManager(); // [DODANE]
-    private static final int MAX_ENEMIES = 100;
+    private static final int MAX_ENEMIES = 10;
     List<WebSocket> playersToRemove = new ArrayList<>();
+
 
     public GameServer(int port) {
         super(new InetSocketAddress("0.0.0.0", port));
@@ -26,11 +28,12 @@ public class GameServer extends WebSocketServer {
 
     }
 
+
     private void spawnEnemies(int count) {
         enemies.clear();
         for (int i = 0; i < count; i++) {
-            double x = random.nextInt(880);
-            double y = random.nextInt(880);
+            int x = random.nextInt(880);
+            int y = random.nextInt(880);
             enemies.add(new Enemy(x, y, 2));
         }
     }
@@ -54,8 +57,8 @@ public class GameServer extends WebSocketServer {
                         }
 
                         while (spawned < spawnCount) {
-                            double x = random.nextInt(880);
-                            double y = random.nextInt(880);
+                            int x = random.nextInt(880);
+                            int y = random.nextInt(880);
 
                             boolean tooClose = false;
                             for (Player p : playerList) {
@@ -69,7 +72,7 @@ public class GameServer extends WebSocketServer {
                             }
 
                             if (!tooClose) {
-                                enemies.add(new Enemy(x, y, 2));
+                                enemies.add(new Enemy(x, y, 2)); // użycie klasy org.example.Enemy
                                 spawned++;
                             }
                         }
@@ -82,6 +85,7 @@ public class GameServer extends WebSocketServer {
     }
 
 
+
     private void startEnemyUpdateLoop() {
         new Thread(() -> {
             while (true) {
@@ -90,64 +94,60 @@ public class GameServer extends WebSocketServer {
                     playerList = new ArrayList<>(players.values());
                 }
 
-                for (Enemy enemy : enemies) {
-                    if (playerList.isEmpty()) continue;
+                // Przerzuć do listy Movable
+                List<Movable> movablePlayers = new ArrayList<>(playerList);
 
-                    Player closest = null;
-                    double minDist = Double.MAX_VALUE;
-                    for (Player p : playerList) {
-                        double dx = p.getX() - enemy.x;
-                        double dy = p.getY() - enemy.y;
-                        double dist = Math.sqrt(dx * dx + dy * dy);
-                        if (dist < minDist) {
-                            minDist = dist;
-                            closest = p;
-                        }
-                    }
+                synchronized (enemies) {
+                    for (Enemy enemy : enemies) {
+                        if (movablePlayers.isEmpty()) continue;
 
-                    if (closest != null && minDist > 0) {
-                        double dx = closest.getX() - enemy.x;
-                        double dy = closest.getY() - enemy.y;
-                        double dist = Math.sqrt(dx * dx + dy * dy);
-                        enemy.x += enemy.speed * dx / dist;
-                        enemy.y += enemy.speed * dy / dist;
+                        // Ruch przeciwnika w kierunku najbliższego gracza
+                        enemy.moveTowardsClosest(movablePlayers);
 
-                        enemy.x = Math.max(0, Math.min(880, enemy.x));
-                        enemy.y = Math.max(0, Math.min(880, enemy.y));
-                    }
+                        // Ograniczenie pozycji do pola 880x880
+                        int newX = Math.max(0, Math.min(880, enemy.getX()));
+                        int newY = Math.max(0, Math.min(880, enemy.getY()));
+                        enemy.setX(newX);
+                        enemy.setY(newY);
 
-                    // [NOWE] Sprawdź kolizje z każdym graczem
-                    synchronized (players) {
-                        for (Map.Entry<WebSocket, Player> entry : players.entrySet()) {
-                            Player p = entry.getValue();
-                            double dx = p.getX() - enemy.x;
-                            double dy = p.getY() - enemy.y;
-                            double dist = Math.sqrt(dx * dx + dy * dy);
-                            if (dist < 20) { // dystans kontaktu
-                                playersToRemove.add(entry.getKey());
+                        // Kolizje z graczami
+                        synchronized (players) {
+                            for (Map.Entry<WebSocket, Player> entry : players.entrySet()) {
+                                Player p = entry.getValue();
+                                double dx = p.getX() - enemy.getX();
+                                double dy = p.getY() - enemy.getY();
+                                double dist = Math.sqrt(dx * dx + dy * dy);
+                                if (dist < 20) { // kontakt
+                                    playersToRemove.add(entry.getKey());
+                                }
                             }
                         }
                     }
                 }
+
+                // Usunięcie graczy po kolizji
                 for (WebSocket conn : playersToRemove) {
                     players.remove(conn);
-                    conn.close(); // rozłącz klienta opcjonalnie
+                    conn.close();
                     System.out.println("Gracz usunięty po kontakcie z wrogiem: " + conn.getRemoteSocketAddress());
                 }
+                playersToRemove.clear();
 
-                // [DODANE] AKTUALIZACJA POCISKÓW
+                // Aktualizacja pocisków
                 projectileManager.update(enemies);
                 List<Projectile> activeProjectiles = projectileManager.getProjectiles();
-                String projectileUpdate = gson.toJson(new ProjectilePacket(activeProjectiles)); // [DODANE]
+                String projectileUpdate = gson.toJson(new ProjectilePacket(activeProjectiles));
 
+                // Serializacja danych
                 String update = gson.toJson(new EnemyPacket(enemies));
                 String playerUpdate = gson.toJson(new PlayerPacket(playerList));
 
+                // Wysyłanie do klientów
                 for (WebSocket client : clients) {
                     if (client.isOpen()) {
                         client.send(update);
                         client.send(playerUpdate);
-                        client.send(projectileUpdate); // [DODANE]
+                        client.send(projectileUpdate);
                     }
                 }
 
@@ -157,6 +157,7 @@ public class GameServer extends WebSocketServer {
             }
         }).start();
     }
+
 
     @Override
     public void onOpen(WebSocket conn, ClientHandshake handshake) {
@@ -207,18 +208,7 @@ public class GameServer extends WebSocketServer {
         System.out.println("Serwer WebSocket działa na porcie: " + getPort());
     }
 
-    // --- KLASY POMOCNICZE ---
 
-    static class Enemy {
-        double x, y;
-        int speed;
-
-        Enemy(double x, double y, int speed) {
-            this.x = x;
-            this.y = y;
-            this.speed = speed;
-        }
-    }
 
     static class PlayerPacket {
         String type = "playerUpdate";

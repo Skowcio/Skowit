@@ -11,7 +11,7 @@ public class ProjectileManager {
         projectiles.add(new Projectile(x, y, angle, 5));
     }
 
-    public void update(List<GameServer.Enemy> enemies) {
+    public void update(List<Enemy> enemies) {
         Iterator<Projectile> iterator = projectiles.iterator();
         while (iterator.hasNext()) {
             Projectile p = iterator.next();
@@ -23,14 +23,14 @@ public class ProjectileManager {
                 continue;
             }
 
-            Iterator<GameServer.Enemy> enemyIterator = enemies.iterator();
+            Iterator<Enemy> enemyIterator = enemies.iterator();
             while (enemyIterator.hasNext()) {
-                GameServer.Enemy e = enemyIterator.next();
-                double dx = e.x - p.x;
-                double dy = e.y - p.y;
+                Enemy e = enemyIterator.next();
+                double dx = e.getX() - p.x;
+                double dy = e.getY() - p.y;
                 if (Math.sqrt(dx * dx + dy * dy) < 15) {
-                    enemyIterator.remove();
-                    iterator.remove();
+                    enemyIterator.remove(); // Usuń wroga
+                    iterator.remove();      // Usuń pocisk
                     break;
                 }
             }
